@@ -22,6 +22,7 @@ import (
 	v1 "github.com/istio-ecosystem/sail-operator/api/v1"
 	"github.com/istio-ecosystem/sail-operator/pkg/config"
 	"github.com/istio-ecosystem/sail-operator/pkg/constants"
+	monitoringpkg "github.com/istio-ecosystem/sail-operator/pkg/monitoring"
 	"github.com/istio-ecosystem/sail-operator/pkg/scheme"
 	. "github.com/onsi/gomega"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -227,12 +228,12 @@ func TestReconcile(t *testing.T) {
 				sm := &monitoringv1.ServiceMonitor{}
 				sm.SetGroupVersionKind(testRhobsGV.WithKind("ServiceMonitor"))
 				err := cl.Get(ctx, types.NamespacedName{
-					Name:      revisionName + serviceMonitorNameSuffix,
+					Name:      revisionName + monitoringpkg.ServiceMonitorNameSuffix,
 					Namespace: istioNamespace,
 				}, sm)
 				g.Expect(err).ToNot(HaveOccurred())
 				// Verify the ServiceMonitor has expected content
-				g.Expect(sm.Name).To(Equal(revisionName + serviceMonitorNameSuffix))
+				g.Expect(sm.Name).To(Equal(revisionName + monitoringpkg.ServiceMonitorNameSuffix))
 				g.Expect(sm.Labels["monitored-by"]).To(Equal("coo-prometheus"))
 			}
 
@@ -241,12 +242,12 @@ func TestReconcile(t *testing.T) {
 				pm := &monitoringv1.PodMonitor{}
 				pm.SetGroupVersionKind(testRhobsGV.WithKind("PodMonitor"))
 				err := cl.Get(ctx, types.NamespacedName{
-					Name:      revisionName + podMonitorNameSuffix,
+					Name:      revisionName + monitoringpkg.PodMonitorNameSuffix,
 					Namespace: tt.expectPMNamespace,
 				}, pm)
 				g.Expect(err).ToNot(HaveOccurred())
 				// Verify the PodMonitor has expected content
-				g.Expect(pm.Name).To(Equal(revisionName + podMonitorNameSuffix))
+				g.Expect(pm.Name).To(Equal(revisionName + monitoringpkg.PodMonitorNameSuffix))
 				g.Expect(pm.Labels["monitored-by"]).To(Equal("coo-prometheus"))
 			}
 		})
@@ -291,7 +292,7 @@ func TestReconcileServiceMonitor(t *testing.T) {
 			existingSM: func() *monitoringv1.ServiceMonitor {
 				sm := &monitoringv1.ServiceMonitor{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:            revisionName + serviceMonitorNameSuffix,
+						Name:            revisionName + monitoringpkg.ServiceMonitorNameSuffix,
 						Namespace:       istioNamespace,
 						ResourceVersion: "123",
 					},
@@ -343,8 +344,8 @@ func TestReconcileServiceMonitor(t *testing.T) {
 			}
 
 			cl := builder.Build()
-			reconciler := NewReconciler(cfg, cl, scheme.Scheme)
-			err := reconciler.reconcileServiceMonitor(ctx, tt.rev)
+			opts := monitoringpkg.DefaultOptions(cfg.Platform, istioName)
+			err := monitoringpkg.ReconcileRevision(ctx, cl, tt.rev, opts)
 
 			if tt.expectErr {
 				g.Expect(err).To(HaveOccurred())
@@ -355,12 +356,12 @@ func TestReconcileServiceMonitor(t *testing.T) {
 				result := &monitoringv1.ServiceMonitor{}
 				result.SetGroupVersionKind(testRhobsGV.WithKind("ServiceMonitor"))
 				err := cl.Get(ctx, types.NamespacedName{
-					Name:      revisionName + serviceMonitorNameSuffix,
+					Name:      revisionName + monitoringpkg.ServiceMonitorNameSuffix,
 					Namespace: istioNamespace,
 				}, result)
 				g.Expect(err).ToNot(HaveOccurred())
 				// Verify expected content
-				g.Expect(result.Name).To(Equal(revisionName + serviceMonitorNameSuffix))
+				g.Expect(result.Name).To(Equal(revisionName + monitoringpkg.ServiceMonitorNameSuffix))
 				g.Expect(result.Labels["monitored-by"]).To(Equal("coo-prometheus"))
 			}
 		})
@@ -441,7 +442,7 @@ func TestReconcilePodMonitors(t *testing.T) {
 			existingPM: func() *monitoringv1.PodMonitor {
 				pm := &monitoringv1.PodMonitor{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:            revisionName + podMonitorNameSuffix,
+						Name:            revisionName + monitoringpkg.PodMonitorNameSuffix,
 						Namespace:       appNamespace,
 						ResourceVersion: "123",
 					},
@@ -511,8 +512,8 @@ func TestReconcilePodMonitors(t *testing.T) {
 			}
 
 			cl := builder.Build()
-			reconciler := NewReconciler(cfg, cl, scheme.Scheme)
-			err := reconciler.reconcilePodMonitors(ctx, tt.rev)
+			opts := monitoringpkg.DefaultOptions(cfg.Platform, istioName)
+			err := monitoringpkg.ReconcileRevision(ctx, cl, tt.rev, opts)
 
 			if tt.expectErr {
 				g.Expect(err).To(HaveOccurred())
@@ -524,12 +525,12 @@ func TestReconcilePodMonitors(t *testing.T) {
 					pm := &monitoringv1.PodMonitor{}
 					pm.SetGroupVersionKind(testRhobsGV.WithKind("PodMonitor"))
 					err := cl.Get(ctx, types.NamespacedName{
-						Name:      revisionName + podMonitorNameSuffix,
+						Name:      revisionName + monitoringpkg.PodMonitorNameSuffix,
 						Namespace: ns,
 					}, pm)
 					g.Expect(err).ToNot(HaveOccurred(), "PodMonitor should exist in namespace %s", ns)
 					// Verify expected content
-					g.Expect(pm.Name).To(Equal(revisionName + podMonitorNameSuffix))
+					g.Expect(pm.Name).To(Equal(revisionName + monitoringpkg.PodMonitorNameSuffix))
 					g.Expect(pm.Labels["monitored-by"]).To(Equal("coo-prometheus"))
 				}
 			}
@@ -614,9 +615,8 @@ func TestBuildServiceMonitor(t *testing.T) {
 			cfg := newReconcilerTestConfig()
 			cfg.Platform = tt.platform
 
-			cl := newFakeClientBuilder().Build()
-			reconciler := NewReconciler(cfg, cl, scheme.Scheme)
-			result := reconciler.buildServiceMonitor(tt.rev)
+			opts := monitoringpkg.DefaultOptions(tt.platform, istioOwnerNameFromRevision(tt.rev))
+			result := monitoringpkg.BuildServiceMonitor(tt.rev, opts)
 
 			g.Expect(result.GetObjectKind().GroupVersionKind().Group).To(Equal("monitoring.rhobs"))
 			g.Expect(result.GetObjectKind().GroupVersionKind().Version).To(Equal("v1"))
@@ -714,9 +714,8 @@ func TestBuildPodMonitor(t *testing.T) {
 			cfg := newReconcilerTestConfig()
 			cfg.Platform = tt.platform
 
-			cl := newFakeClientBuilder().Build()
-			reconciler := NewReconciler(cfg, cl, scheme.Scheme)
-			result := reconciler.buildPodMonitor(tt.rev, tt.namespace)
+			opts := monitoringpkg.DefaultOptions(tt.platform, istioOwnerNameFromRevision(tt.rev))
+			result := monitoringpkg.BuildPodMonitor(tt.rev, tt.namespace, opts)
 
 			g.Expect(result.GetObjectKind().GroupVersionKind().Group).To(Equal("monitoring.rhobs"))
 			g.Expect(result.GetObjectKind().GroupVersionKind().Version).To(Equal("v1"))
@@ -890,4 +889,13 @@ func newReconcilerTestConfig() config.ReconcilerConfig {
 	return config.ReconcilerConfig{
 		MaxConcurrentReconciles: 1,
 	}
+}
+
+func istioOwnerNameFromRevision(rev *v1.IstioRevision) string {
+	for _, ownerRef := range rev.GetOwnerReferences() {
+		if ownerRef.Kind == v1.IstioKind {
+			return ownerRef.Name
+		}
+	}
+	return rev.Name
 }
