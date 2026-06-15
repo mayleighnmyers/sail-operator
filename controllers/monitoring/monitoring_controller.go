@@ -23,15 +23,11 @@ import (
 	"github.com/istio-ecosystem/sail-operator/pkg/config"
 	"github.com/istio-ecosystem/sail-operator/pkg/constants"
 	"github.com/istio-ecosystem/sail-operator/pkg/enqueuelogger"
-	monitoringapigroup "github.com/istio-ecosystem/sail-operator/pkg/monitoring"
-	"github.com/istio-ecosystem/sail-operator/pkg/monitoring/relabeling"
+	monitoringpkg "github.com/istio-ecosystem/sail-operator/pkg/monitoring"
 	"github.com/istio-ecosystem/sail-operator/pkg/reconciler"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,23 +39,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const (
-	serviceMonitorNameSuffix = "-istiod"
-	podMonitorNameSuffix     = "-proxies"
-
-	// cooMonitoredByLabel is the label key used so a Prometheus stack selects these monitors.
-	// cooMonitoredByValue is hardcoded for the interim Istio.spec.monitoring.enabled flow;
-	// we will update this value once we determine where to source it (e.g. MonitoringStack ref).
-	cooMonitoredByLabel = "monitored-by"
-	cooMonitoredByValue = "coo-prometheus"
-)
-
 // Reconciler reconciles monitoring resources (ServiceMonitor, PodMonitor) for IstioRevision objects.
 type Reconciler struct {
 	client.Client
 	Config     config.ReconcilerConfig
 	Scheme     *runtime.Scheme
-	RESTMapper monitoringapigroup.RESTMapper
+	RESTMapper monitoringpkg.RESTMapper
 }
 
 // NewReconciler creates a new monitoring Reconciler.
@@ -95,22 +80,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, rev *v1.IstioRevision) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	log.V(1).Info("Using monitoring API group", "group", r.monitoringGV().Group)
-
-	if err := r.reconcileServiceMonitor(ctx, rev); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile ServiceMonitor: %w", err)
+	opts := monitoringpkg.DefaultOptions(r.Config.Platform, istioOwnerName(rev))
+	opts.RESTMapper = r.RESTMapper
+	if err := monitoringpkg.ReconcileRevision(ctx, r.Client, rev, opts); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	if err := r.reconcilePodMonitors(ctx, rev); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile PodMonitors: %w", err)
-	}
-
-	log.Info("Monitoring resources reconciled successfully")
 	return ctrl.Result{}, nil
-}
-
-func (r *Reconciler) monitoringGV() schema.GroupVersion {
-	return monitoringapigroup.DetectMonitoringAPIGroup(r.RESTMapper)
 }
 
 func (r *Reconciler) isMonitoringEnabled(ctx context.Context, rev *v1.IstioRevision) (bool, error) {
@@ -129,160 +105,6 @@ func (r *Reconciler) isMonitoringEnabled(ctx context.Context, rev *v1.IstioRevis
 	return false, nil
 }
 
-func (r *Reconciler) reconcileServiceMonitor(ctx context.Context, rev *v1.IstioRevision) error {
-	log := logf.FromContext(ctx)
-	desired := r.buildServiceMonitor(rev)
-
-	existing := &monitoringv1.ServiceMonitor{}
-	existing.SetGroupVersionKind(r.monitoringGV().WithKind("ServiceMonitor"))
-
-	err := r.Client.Get(ctx, client.ObjectKeyFromObject(desired), existing)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Creating ServiceMonitor", "name", desired.GetName(), "namespace", desired.GetNamespace())
-			return r.Client.Create(ctx, desired)
-		}
-		return fmt.Errorf("failed to get ServiceMonitor: %w", err)
-	}
-
-	log.V(2).Info("Updating ServiceMonitor", "name", desired.GetName(), "namespace", desired.GetNamespace())
-	desired.SetResourceVersion(existing.GetResourceVersion())
-	return r.Client.Update(ctx, desired)
-}
-
-func (r *Reconciler) reconcilePodMonitors(ctx context.Context, rev *v1.IstioRevision) error {
-	log := logf.FromContext(ctx)
-
-	nsList := &corev1.NamespaceList{}
-	if err := r.Client.List(ctx, nsList, client.MatchingLabels{
-		constants.IstioInjectionLabel: constants.IstioInjectionEnabledValue,
-	}); err != nil {
-		return fmt.Errorf("failed to list namespaces: %w", err)
-	}
-
-	for _, ns := range nsList.Items {
-		if ns.Name == rev.Spec.Namespace {
-			log.V(2).Info("Skipping PodMonitor for control plane namespace", "namespace", ns.Name)
-			continue
-		}
-
-		if err := r.reconcilePodMonitorInNamespace(ctx, rev, ns.Name); err != nil {
-			return fmt.Errorf("failed to reconcile PodMonitor in namespace %s: %w", ns.Name, err)
-		}
-	}
-
-	return nil
-}
-
-func (r *Reconciler) reconcilePodMonitorInNamespace(ctx context.Context, rev *v1.IstioRevision, namespace string) error {
-	log := logf.FromContext(ctx)
-	desired := r.buildPodMonitor(rev, namespace)
-
-	existing := &monitoringv1.PodMonitor{}
-	existing.SetGroupVersionKind(r.monitoringGV().WithKind("PodMonitor"))
-
-	err := r.Client.Get(ctx, client.ObjectKeyFromObject(desired), existing)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Creating PodMonitor", "name", desired.GetName(), "namespace", namespace)
-			return r.Client.Create(ctx, desired)
-		}
-		return fmt.Errorf("failed to get PodMonitor: %w", err)
-	}
-
-	log.V(2).Info("Updating PodMonitor", "name", desired.GetName(), "namespace", namespace)
-	desired.SetResourceVersion(existing.GetResourceVersion())
-	return r.Client.Update(ctx, desired)
-}
-
-func (r *Reconciler) buildServiceMonitor(rev *v1.IstioRevision) *monitoringv1.ServiceMonitor {
-	name := rev.Name + serviceMonitorNameSuffix
-	namespace := rev.Spec.Namespace
-	relabelCfg := relabeling.ForPlatform(r.Config.Platform, istioOwnerName(rev))
-
-	sm := &monitoringv1.ServiceMonitor{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app":               "istiod",
-				cooMonitoredByLabel: cooMonitoredByValue,
-			},
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         v1.GroupVersion.String(),
-					Kind:               v1.IstioRevisionKind,
-					Name:               rev.Name,
-					UID:                rev.UID,
-					Controller:         ptr(true),
-					BlockOwnerDeletion: ptr(true),
-				},
-			},
-		},
-		Spec: monitoringv1.ServiceMonitorSpec{
-			TargetLabels: []string{"app"},
-			Selector: metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{
-					{
-						Key:      "istio",
-						Operator: metav1.LabelSelectorOpIn,
-						Values:   []string{"pilot"},
-					},
-				},
-			},
-			Endpoints: []monitoringv1.Endpoint{
-				{
-					Port:           "http-monitoring",
-					Path:           "/metrics",
-					Scheme:         ptr(monitoringv1.Scheme("http")),
-					Interval:       monitoringv1.Duration("30s"),
-					RelabelConfigs: relabelCfg.ServiceMonitorRelabelings,
-				},
-			},
-		},
-	}
-
-	sm.SetGroupVersionKind(r.monitoringGV().WithKind("ServiceMonitor"))
-	return sm
-}
-
-func (r *Reconciler) buildPodMonitor(rev *v1.IstioRevision, namespace string) *monitoringv1.PodMonitor {
-	name := rev.Name + podMonitorNameSuffix
-	relabelCfg := relabeling.ForPlatform(r.Config.Platform, istioOwnerName(rev))
-
-	pm := &monitoringv1.PodMonitor{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app":               "istio-proxy",
-				cooMonitoredByLabel: cooMonitoredByValue,
-			},
-		},
-		Spec: monitoringv1.PodMonitorSpec{
-			Selector: metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{
-					{
-						Key:      "istio-prometheus-ignore",
-						Operator: metav1.LabelSelectorOpDoesNotExist,
-					},
-				},
-			},
-			PodMetricsEndpoints: []monitoringv1.PodMetricsEndpoint{
-				{
-					Path:           "/stats/prometheus",
-					Scheme:         ptr(monitoringv1.Scheme("http")),
-					Interval:       monitoringv1.Duration("30s"),
-					RelabelConfigs: relabelCfg.PodMonitorRelabelings,
-				},
-			},
-		},
-	}
-
-	pm.SetGroupVersionKind(r.monitoringGV().WithKind("PodMonitor"))
-	return pm
-}
-
 func istioOwnerName(rev *v1.IstioRevision) string {
 	for _, ownerRef := range rev.GetOwnerReferences() {
 		if ownerRef.Kind == v1.IstioKind {
@@ -292,10 +114,7 @@ func istioOwnerName(rev *v1.IstioRevision) string {
 	return rev.Name
 }
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
+// SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.RESTMapper = mgr.GetRESTMapper()
 
@@ -393,7 +212,9 @@ func injectionEnabledPredicate() predicate.Funcs {
 			return hasInjectionEnabled(e.Object)
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return hasInjectionEnabled(e.ObjectOld) != hasInjectionEnabled(e.ObjectNew)
+			oldHasLabel := hasInjectionEnabled(e.ObjectOld)
+			newHasLabel := hasInjectionEnabled(e.ObjectNew)
+			return oldHasLabel != newHasLabel
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return hasInjectionEnabled(e.Object)
