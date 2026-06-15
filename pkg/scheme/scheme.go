@@ -15,7 +15,6 @@
 package scheme
 
 import (
-	integrationv1alpha1 "github.com/istio-ecosystem/sail-operator/api/integration/v1alpha1"
 	v1 "github.com/istio-ecosystem/sail-operator/api/v1"
 	"github.com/istio-ecosystem/sail-operator/api/v1alpha1"
 	multusv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -41,7 +40,6 @@ func init() {
 	utilruntime.Must(networkingv1alpha3.AddToScheme(Scheme))
 	utilruntime.Must(configv1.AddToScheme(Scheme))
 
-	utilruntime.Must(integrationv1alpha1.AddToScheme(Scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(Scheme))
 	utilruntime.Must(v1.AddToScheme(Scheme))
 
