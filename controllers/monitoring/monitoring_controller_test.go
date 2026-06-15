@@ -22,12 +22,12 @@ import (
 	v1 "github.com/istio-ecosystem/sail-operator/api/v1"
 	"github.com/istio-ecosystem/sail-operator/pkg/config"
 	"github.com/istio-ecosystem/sail-operator/pkg/constants"
+	monitoringapigroup "github.com/istio-ecosystem/sail-operator/pkg/monitoring"
 	"github.com/istio-ecosystem/sail-operator/pkg/scheme"
 	. "github.com/onsi/gomega"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -60,8 +60,8 @@ var (
 		},
 	}
 
-	// testRhobsGV is the GroupVersion for COO monitoring resources used in tests
-	testRhobsGV = schema.GroupVersion{Group: "monitoring.rhobs", Version: "v1"}
+	// testMonitoringGV is the default GroupVersion used in unit tests without RESTMapper detection.
+	testMonitoringGV = monitoringapigroup.DefaultMonitoringGV
 )
 
 // newNamespaceWithInjection creates a namespace with the istio-injection=enabled label
@@ -225,7 +225,7 @@ func TestReconcile(t *testing.T) {
 			// Check ServiceMonitor creation
 			if tt.expectSMCreated {
 				sm := &monitoringv1.ServiceMonitor{}
-				sm.SetGroupVersionKind(testRhobsGV.WithKind("ServiceMonitor"))
+				sm.SetGroupVersionKind(testMonitoringGV.WithKind("ServiceMonitor"))
 				err := cl.Get(ctx, types.NamespacedName{
 					Name:      revisionName + serviceMonitorNameSuffix,
 					Namespace: istioNamespace,
@@ -239,7 +239,7 @@ func TestReconcile(t *testing.T) {
 			// Check PodMonitor creation
 			if tt.expectPMNamespace != "" {
 				pm := &monitoringv1.PodMonitor{}
-				pm.SetGroupVersionKind(testRhobsGV.WithKind("PodMonitor"))
+				pm.SetGroupVersionKind(testMonitoringGV.WithKind("PodMonitor"))
 				err := cl.Get(ctx, types.NamespacedName{
 					Name:      revisionName + podMonitorNameSuffix,
 					Namespace: tt.expectPMNamespace,
@@ -296,7 +296,7 @@ func TestReconcileServiceMonitor(t *testing.T) {
 						ResourceVersion: "123",
 					},
 				}
-				sm.SetGroupVersionKind(testRhobsGV.WithKind("ServiceMonitor"))
+				sm.SetGroupVersionKind(testMonitoringGV.WithKind("ServiceMonitor"))
 				return sm
 			}(),
 			expectErr:    false,
@@ -353,7 +353,7 @@ func TestReconcileServiceMonitor(t *testing.T) {
 
 				// Verify the ServiceMonitor exists
 				result := &monitoringv1.ServiceMonitor{}
-				result.SetGroupVersionKind(testRhobsGV.WithKind("ServiceMonitor"))
+				result.SetGroupVersionKind(testMonitoringGV.WithKind("ServiceMonitor"))
 				err := cl.Get(ctx, types.NamespacedName{
 					Name:      revisionName + serviceMonitorNameSuffix,
 					Namespace: istioNamespace,
@@ -446,7 +446,7 @@ func TestReconcilePodMonitors(t *testing.T) {
 						ResourceVersion: "123",
 					},
 				}
-				pm.SetGroupVersionKind(testRhobsGV.WithKind("PodMonitor"))
+				pm.SetGroupVersionKind(testMonitoringGV.WithKind("PodMonitor"))
 				return pm
 			}(),
 			expectErr:          false,
@@ -522,7 +522,7 @@ func TestReconcilePodMonitors(t *testing.T) {
 				// Verify PodMonitors exist in expected namespaces
 				for _, ns := range tt.expectPMNamespaces {
 					pm := &monitoringv1.PodMonitor{}
-					pm.SetGroupVersionKind(testRhobsGV.WithKind("PodMonitor"))
+					pm.SetGroupVersionKind(testMonitoringGV.WithKind("PodMonitor"))
 					err := cl.Get(ctx, types.NamespacedName{
 						Name:      revisionName + podMonitorNameSuffix,
 						Namespace: ns,
@@ -618,7 +618,7 @@ func TestBuildServiceMonitor(t *testing.T) {
 			reconciler := NewReconciler(cfg, cl, scheme.Scheme)
 			result := reconciler.buildServiceMonitor(tt.rev)
 
-			g.Expect(result.GetObjectKind().GroupVersionKind().Group).To(Equal("monitoring.rhobs"))
+			g.Expect(result.GetObjectKind().GroupVersionKind().Group).To(Equal(monitoringapigroup.CoreOSAPIGroup))
 			g.Expect(result.GetObjectKind().GroupVersionKind().Version).To(Equal("v1"))
 			g.Expect(result.GetObjectKind().GroupVersionKind().Kind).To(Equal("ServiceMonitor"))
 			g.Expect(result.GetName()).To(Equal(tt.expectedName))
@@ -718,7 +718,7 @@ func TestBuildPodMonitor(t *testing.T) {
 			reconciler := NewReconciler(cfg, cl, scheme.Scheme)
 			result := reconciler.buildPodMonitor(tt.rev, tt.namespace)
 
-			g.Expect(result.GetObjectKind().GroupVersionKind().Group).To(Equal("monitoring.rhobs"))
+			g.Expect(result.GetObjectKind().GroupVersionKind().Group).To(Equal(monitoringapigroup.CoreOSAPIGroup))
 			g.Expect(result.GetObjectKind().GroupVersionKind().Version).To(Equal("v1"))
 			g.Expect(result.GetObjectKind().GroupVersionKind().Kind).To(Equal("PodMonitor"))
 			g.Expect(result.GetName()).To(Equal(tt.expectedName))
