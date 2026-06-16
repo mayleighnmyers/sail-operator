@@ -1,0 +1,22 @@
+# Minimal MonitoringStack CRD stub for Integration e2e tests on KinD.
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: monitoringstacks.monitoring.rhobs
+spec:
+  group: monitoring.rhobs
+  names:
+    kind: MonitoringStack
+    listKind: MonitoringStackList
+    plural: monitoringstacks
+    singular: monitoringstack
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
