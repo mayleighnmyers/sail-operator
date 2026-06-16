@@ -45,7 +45,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: OpenShift Optional, Integration & Delivery, Networking, Security
     containerImage: quay.io/sail-dev/sail-operator:1.30-latest
-    createdAt: "2026-06-14T06:34:06Z"
+    createdAt: "2026-06-16T17:56:56Z"
     description: The Sail Operator manages the lifecycle of your Istio control plane. It provides custom resources for you to deploy and manage your control plane components.
     features.operators.openshift.io/cnf: "false"
     features.operators.openshift.io/cni: "true"
@@ -174,6 +174,11 @@ spec:
         version: v1
       - kind: Telemetry
         name: telemetries.telemetry.istio.io
+        version: v1alpha1
+      - description: Integration configures observability integrations for an Istio control plane.
+        displayName: Integration
+        kind: Integration
+        name: integrations.integration.ossm
         version: v1alpha1
       - description: IstioCNI represents a deployment of the Istio CNI component.
         displayName: Istio CNI
@@ -318,6 +323,21 @@ spec:
               Defaults to false.
             displayName: Update Workloads Automatically
             path: updateStrategy.updateWorkloads
+            x-descriptors:
+              - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+          - description: |-
+              Defines the configuration for Prometheus monitoring integration.
+              When enabled, the operator creates ServiceMonitor and PodMonitor resources
+              for scraping Istio metrics using the Cluster Observability Operator (COO).
+            displayName: Monitoring
+            path: monitoring
+          - description: |-
+              When enabled, the operator creates ServiceMonitor resources for istiod
+              and PodMonitor resources for Envoy sidecars in namespaces with
+              istio-injection=enabled label.
+              Defaults to false.
+            displayName: Enable Monitoring
+            path: monitoring.enabled
             x-descriptors:
               - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
           - description: Namespace to which the Istio components should be installed. Note that this field is immutable.
@@ -741,6 +761,60 @@ spec:
                 - get
                 - patch
                 - update
+            - apiGroups:
+                - monitoring.coreos.com
+              resources:
+                - servicemonitors
+                - podmonitors
+              verbs:
+                - create
+                - delete
+                - get
+                - list
+                - patch
+                - update
+                - watch
+            - apiGroups:
+                - monitoring.rhobs
+              resources:
+                - servicemonitors
+                - podmonitors
+              verbs:
+                - create
+                - delete
+                - get
+                - list
+                - patch
+                - update
+                - watch
+            - apiGroups:
+                - monitoring.rhobs
+              resources:
+                - monitoringstacks
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - integration.ossm
+              resources:
+                - integrations
+              verbs:
+                - get
+                - list
+                - watch
+                - create
+                - update
+                - patch
+                - delete
+            - apiGroups:
+                - integration.ossm
+              resources:
+                - integrations/status
+              verbs:
+                - get
+                - update
+                - patch
           serviceAccountName: sail-operator
       deployments:
         - label:
