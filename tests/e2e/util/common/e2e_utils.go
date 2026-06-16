@@ -51,6 +51,7 @@ const (
 	MultiCluster      testSuite = "multi-cluster"
 	Operator          testSuite = "operator"
 	MultiControlPlane testSuite = "multi-control-plane"
+	Observability     testSuite = "observability"
 )
 
 const (
@@ -191,6 +192,9 @@ func LogDebugInfo(suite testSuite, kubectls ...kubectl.Kubectl) {
 			logDebugElement("=====httpbin deployment describe=====", describe, err, &buf)
 			writeDebugFile(artifactsDir, clusterName, "ambient-deployments", &buf)
 		}
+		if suite == Observability {
+			logObservabilityDebugInfo(k, artifactsDir, clusterName)
+		}
 	}
 }
 
@@ -318,6 +322,24 @@ func logSampleNamespacesDebugInfo(k kubectl.Kubectl, suite testSuite, artifactsD
 		logSampleNamespaceInfo(k, ns, &buf)
 		writeDebugFile(artifactsDir, clusterName, "namespace-"+ns, &buf)
 	}
+}
+
+func logObservabilityDebugInfo(k kubectl.Kubectl, artifactsDir, clusterName string) {
+	var buf strings.Builder
+
+	integrations, err := k.WithNamespace(ControlPlaneNamespace).GetYAML("integrations.integration.ossm", "")
+	logDebugElement("=====Integration CRs in "+ControlPlaneNamespace+"=====", integrations, err, &buf)
+
+	serviceMonitors, err := k.WithNamespace(ControlPlaneNamespace).GetYAML("servicemonitors.monitoring.coreos.com", "")
+	logDebugElement("=====ServiceMonitors in "+ControlPlaneNamespace+"=====", serviceMonitors, err, &buf)
+
+	podMonitors, err := k.GetYAML("podmonitors.monitoring.coreos.com", "--all-namespaces")
+	logDebugElement("=====PodMonitors (all namespaces)=====", podMonitors, err, &buf)
+
+	stacks, err := k.WithNamespace(MonitoringStackNamespace).GetYAML("monitoringstacks.monitoring.rhobs", "")
+	logDebugElement("=====MonitoringStacks in "+MonitoringStackNamespace+"=====", stacks, err, &buf)
+
+	writeDebugFile(artifactsDir, clusterName, "observability", &buf)
 }
 
 func logSampleNamespaceInfo(k kubectl.Kubectl, namespace string, buf *strings.Builder) {
