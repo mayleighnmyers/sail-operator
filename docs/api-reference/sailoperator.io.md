@@ -1,8 +1,236 @@
 # API Reference
 
 ## Packages
+- [integration.ossm/v1alpha1](#integrationossmv1alpha1)
 - [sailoperator.io/v1](#sailoperatoriov1)
 - [sailoperator.io/v1alpha1](#sailoperatoriov1alpha1)
+
+
+## integration.ossm/v1alpha1
+
+Package v1alpha1 contains API Schema definitions for the integration.ossm v1alpha1 API group.
+
+### Resource Types
+- [Integration](#integration-v1alpha1)
+- [IntegrationList](#integrationlist-v1alpha1)
+
+
+
+#### ClusterObservabilityMetrics
+
+
+
+ClusterObservabilityMetrics configures COO metrics integration.
+
+
+
+_Appears in:_
+- [MetricsIntegration](#metricsintegration)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `monitoringStackRef` _[NamespacedObjectReference](#namespacedobjectreference)_ | MonitoringStackRef references the MonitoringStack that should scrape Istio metrics. |  | Required: \{\}   |
+
+
+#### Integration (v1alpha1)
+
+
+
+Integration configures observability integrations for an Istio control plane.
+
+
+
+_Appears in:_
+- [IntegrationList](#integrationlist)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `integration.ossm/v1alpha1` | | |
+| `kind` _string_ | `Integration` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[IntegrationSpec](#integrationspec)_ |  |  |  |
+| `status` _[IntegrationStatus](#integrationstatus)_ |  |  |  |
+
+
+#### IntegrationConditionReason
+
+_Underlying type:_ _string_
+
+IntegrationConditionReason is a reason for an Integration status condition.
+
+
+
+_Appears in:_
+- [IntegrationStatus](#integrationstatus)
+
+| Field | Description |
+| --- | --- |
+| `Healthy` |  |
+| `ReconcileError` |  |
+| `RefNotFound` |  |
+| `InvalidSpec` |  |
+
+
+
+
+#### IntegrationList (v1alpha1)
+
+
+
+IntegrationList contains a list of Integration resources.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `integration.ossm/v1alpha1` | | |
+| `kind` _string_ | `IntegrationList` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `items` _[Integration](#integration) array_ |  |  |  |
+
+
+#### IntegrationSpec
+
+
+
+IntegrationSpec defines the desired state of Integration.
+
+
+
+_Appears in:_
+- [Integration](#integration)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `istioRef` _[IstioReference](#istioreference)_ | IstioRef references the Istio control plane to integrate with. |  | Required: \{\}   |
+| `metrics` _[MetricsIntegration](#metricsintegration)_ | Metrics configures integration with a metrics backend. |  |  |
+| `tracing` _[TracingIntegration](#tracingintegration)_ | Tracing configures integration with a tracing backend. Not reconciled in v1alpha1; reserved for future work. |  |  |
+
+
+#### IntegrationStatus
+
+
+
+IntegrationStatus defines the observed state of Integration.
+
+
+
+_Appears in:_
+- [Integration](#integration)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `observedGeneration` _integer_ | ObservedGeneration is the most recent generation observed for this Integration object. |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#condition-v1-meta) array_ | Conditions represent the latest available observations of the Integration's state. |  |  |
+| `state` _[IntegrationConditionReason](#integrationconditionreason)_ | State reports the high-level reconciliation state. |  |  |
+| `istioRevision` _string_ | IstioRevision is the active IstioRevision reconciled for this integration. |  |  |
+
+
+#### IstioReference
+
+
+
+IstioReference references a cluster-scoped Istio resource by name.
+
+
+
+_Appears in:_
+- [IntegrationSpec](#integrationspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | Name is the name of the Istio resource. |  | MaxLength: 253  MinLength: 1  Required: \{\}   |
+
+
+#### MetricsIntegration
+
+
+
+MetricsIntegration configures metrics collection integration.
+
+
+
+_Appears in:_
+- [IntegrationSpec](#integrationspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[MetricsIntegrationType](#metricsintegrationtype)_ | Type identifies the metrics integration backend. |  | Enum: [ClusterObservability]  Required: \{\}   |
+| `clusterObservability` _[ClusterObservabilityMetrics](#clusterobservabilitymetrics)_ | ClusterObservability configures integration with Cluster Observability Operator (COO). |  | Required: \{\}   |
+
+
+#### MetricsIntegrationType
+
+_Underlying type:_ _string_
+
+MetricsIntegrationType identifies the metrics integration backend.
+
+
+
+_Appears in:_
+- [MetricsIntegration](#metricsintegration)
+
+| Field | Description |
+| --- | --- |
+| `ClusterObservability` |  |
+
+
+#### NamespacedObjectReference
+
+
+
+NamespacedObjectReference references a namespaced Kubernetes object.
+
+
+
+_Appears in:_
+- [ClusterObservabilityMetrics](#clusterobservabilitymetrics)
+- [TracingIntegration](#tracingintegration)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | Name is the name of the referenced object. |  | MaxLength: 253  MinLength: 1  Required: \{\}   |
+| `namespace` _string_ | Namespace is the namespace of the referenced object. |  | MaxLength: 63  MinLength: 1  Required: \{\}   |
+
+
+#### TracingIntegration
+
+
+
+TracingIntegration configures tracing integration.
+
+
+
+_Appears in:_
+- [IntegrationSpec](#integrationspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[TracingIntegrationType](#tracingintegrationtype)_ | Type identifies the tracing integration backend. |  | Enum: [TempoStack]   |
+| `tempoStackRef` _[NamespacedObjectReference](#namespacedobjectreference)_ | TempoStackRef references the TempoStack used for tracing. |  |  |
+
+
+#### TracingIntegrationType
+
+_Underlying type:_ _string_
+
+TracingIntegrationType identifies the tracing integration backend.
+
+
+
+_Appears in:_
+- [TracingIntegration](#tracingintegration)
+
+| Field | Description |
+| --- | --- |
+| `TempoStack` |  |
+
 
 
 ## sailoperator.io/v1
@@ -885,6 +1113,7 @@ _Appears in:_
 | `profile` _string_ | The built-in installation configuration profile to use. The 'default' profile is always applied. On OpenShift, the 'openshift' profile is also applied on top of 'default'. Must be one of: ambient, default, demo, empty, openshift, openshift-ambient, preview, remote, stable. |  | Enum: [ambient default demo empty external openshift openshift-ambient preview remote stable]   |
 | `namespace` _string_ | Namespace to which the Istio components should be installed. Note that this field is immutable. | istio-system |  |
 | `values` _[Values](#values)_ | Defines the values to be passed to the Helm charts when installing Istio. |  |  |
+| `monitoring` _[MonitoringConfig](#monitoringconfig)_ | Defines the configuration for Prometheus monitoring integration. When enabled, the operator creates ServiceMonitor and PodMonitor resources for scraping Istio metrics using the Cluster Observability Operator (COO). |  |  |
 
 
 #### IstioStatus
@@ -2025,6 +2254,22 @@ _Appears in:_
 | `TLSV1_3` | TLS version 1.3  |
 
 
+
+
+#### MonitoringConfig
+
+
+
+MonitoringConfig defines the configuration for Prometheus monitoring integration
+
+
+
+_Appears in:_
+- [IstioSpec](#istiospec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `enabled` _boolean_ | When enabled, the operator creates ServiceMonitor resources for istiod and PodMonitor resources for Envoy sidecars in namespaces with istio-injection=enabled label. Defaults to false. | false |  |
 
 
 #### MultiClusterConfig
