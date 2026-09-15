@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-logr/logr"
 	v1 "github.com/istio-ecosystem/sail-operator/api/v1"
+	"github.com/istio-ecosystem/sail-operator/api/v1alpha1"
 	"github.com/istio-ecosystem/sail-operator/pkg/config"
 	"github.com/istio-ecosystem/sail-operator/pkg/constants"
 	"github.com/istio-ecosystem/sail-operator/pkg/enqueuelogger"
@@ -77,7 +78,14 @@ func monitoringEnabled(istio *v1.Istio) bool {
 	return istio.Annotations[constants.MonitoringAnnotationKey] == constants.MonitoringAnnotationEnabledValue
 }
 
-// TODO: map tuningEnabled from an Integration API spec field in a follow-up enhancement.
+func (r *Reconciler) isMonitoringEnabled(ctx context.Context, istio *v1.Istio) (bool, error) {
+	if monitoringEnabled(istio) {
+		return true, nil
+	}
+	return r.hasUserWorkloadMetricsIntegration(ctx, istio.Name)
+}
+
+// TODO: map tuningEnabled from a MetricsIntegration spec field in a follow-up enhancement.
 
 // Reconciler reconciles monitoring resources (ServiceMonitor, PodMonitor) for Istio objects.
 type Reconciler struct {
@@ -121,7 +129,11 @@ func (r *Reconciler) doReconcile(ctx context.Context, istio *v1.Istio) error {
 		return nil
 	}
 
-	if !monitoringEnabled(istio) {
+	enabled, err := r.isMonitoringEnabled(ctx, istio)
+	if err != nil {
+		return err
+	}
+	if !enabled {
 		log.V(2).Info("Monitoring is not enabled on Istio CR, skipping reconciliation")
 		return nil
 	}
@@ -354,8 +366,15 @@ func (r *Reconciler) buildPodMonitor(istio *v1.Istio, namespace string) *monitor
 	return pm
 }
 
-// SetupWithManager sets up the controller with the Manager
+// SetupWithManager sets up the Istio monitoring and MetricsIntegration controllers.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := r.setupIstioController(mgr); err != nil {
+		return err
+	}
+	return r.setupMetricsIntegrationController(mgr)
+}
+
+func (r *Reconciler) setupIstioController(mgr ctrl.Manager) error {
 	logger := mgr.GetLogger().WithName("ctrlr").WithName("monitoring")
 
 	// mainObjectHandler handles Istio watch events
@@ -370,6 +389,9 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// old and new namespace so the previous and current Istio are both requeued.
 	namespaceHandler := wrapEventHandler(logger, handler.EnqueueRequestsFromMapFunc(r.mapNamespaceToReconcileRequest))
 
+	// metricsIntegrationHandler enqueues Istio CRs referenced by the MetricsIntegration.
+	metricsIntegrationHandler := wrapEventHandler(logger, handler.EnqueueRequestsFromMapFunc(r.mapMetricsIntegrationToIstio))
+
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{
 			LogConstructor: func(req *reconcile.Request) logr.Logger {
@@ -382,6 +404,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			MaxConcurrentReconciles: r.Config.MaxConcurrentReconciles,
 		}).
 		Named("monitoring").
+		// we use the Watches function instead of For(), so that we can wrap the handler so that events that cause the object to be enqueued are logged
 		Watches(&v1.Istio{}, mainObjectHandler).
 		// Watch IstioRevisions so create/update/delete requeues the parent Istio.
 		// ServiceMonitors are owned by the IstioRevision. PodMonitors are owned by
@@ -389,6 +412,8 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1.IstioRevision{}, ownedRevisionHandler).
 		// Watch namespaces so sidecar injection label changes requeue the referenced Istio.
 		Watches(&corev1.Namespace{}, namespaceHandler, builder.WithPredicates(sidecarInjectionNamespacePredicate())).
+		// Watch MetricsIntegrations so create/update/delete requeues the referenced Istio.
+		Watches(&v1alpha1.MetricsIntegration{}, metricsIntegrationHandler).
 		Complete(reconciler.NewStandardReconciler[*v1.Istio](r.Client, r.Reconcile))
 }
 
@@ -477,6 +502,6 @@ func sidecarInjectionNamespacePredicate() predicate.Funcs {
 	}
 }
 
-func wrapEventHandler(logger logr.Logger, h handler.EventHandler) handler.EventHandler {
-	return enqueuelogger.WrapIfNecessary(v1.IstioKind, logger, h)
+func wrapEventHandler(logger logr.Logger, handler handler.EventHandler) handler.EventHandler {
+	return enqueuelogger.WrapIfNecessary(v1.IstioKind, logger, handler)
 }

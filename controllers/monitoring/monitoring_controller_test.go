@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	v1 "github.com/istio-ecosystem/sail-operator/api/v1"
+	"github.com/istio-ecosystem/sail-operator/api/v1alpha1"
 	"github.com/istio-ecosystem/sail-operator/pkg/config"
 	"github.com/istio-ecosystem/sail-operator/pkg/constants"
 	"github.com/istio-ecosystem/sail-operator/pkg/scheme"
@@ -116,6 +117,34 @@ func newIstioWithMonitoringEnabled(name, namespace string) *v1.Istio {
 
 func testIstio() *v1.Istio {
 	return newIstioWithMonitoringEnabled(istioName, istioNamespace)
+}
+
+func testIstioWithoutMonitoring() *v1.Istio {
+	return &v1.Istio{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: istioName,
+			UID:  istioUID,
+		},
+		Spec: v1.IstioSpec{
+			Version:   "v1.29.2",
+			Namespace: istioNamespace,
+		},
+	}
+}
+
+func newUserWorkloadMetricsIntegration(name, istioName string) *v1alpha1.MetricsIntegration {
+	return &v1alpha1.MetricsIntegration{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: v1alpha1.MetricsIntegrationSpec{
+			TargetRefs: []v1alpha1.TargetReference{
+				{Kind: v1.IstioKind, Name: istioName},
+			},
+			MetricsConfig: v1alpha1.MetricsConfig{
+				Type:                   v1alpha1.MetricsTypeUserWorkloadMonitoring,
+				UserWorkloadMonitoring: &v1alpha1.UserWorkloadMonitoringConfig{},
+			},
+		},
+	}
 }
 
 func TestReconcile(t *testing.T) {
@@ -244,6 +273,25 @@ func TestReconcile(t *testing.T) {
 			existingObjects: []client.Object{
 				newNamespaceWithInjection(appNamespace),
 			},
+		},
+		{
+			name:  "creates monitors when UserWorkloadMonitoring MetricsIntegration references Istio",
+			istio: testIstioWithoutMonitoring(),
+			revisions: []*v1.IstioRevision{
+				{
+					ObjectMeta: revisionMeta,
+					Spec: v1.IstioRevisionSpec{
+						Version:   "v1.24.0",
+						Namespace: istioNamespace,
+					},
+				},
+			},
+			existingObjects: []client.Object{
+				newNamespaceWithRevLabel(appNamespace, revisionName),
+				newUserWorkloadMetricsIntegration("uwm", istioName),
+			},
+			expectSMRevision:  revisionName,
+			expectPMNamespace: appNamespace,
 		},
 		{
 			name: "skips reconciliation when Istio is being deleted",
@@ -1173,6 +1221,36 @@ func TestMonitoringEnabled(t *testing.T) {
 	g.Expect(monitoringEnabled(&v1.Istio{
 		ObjectMeta: metav1.ObjectMeta{Name: istioName},
 	})).To(BeFalse())
+}
+
+func TestIsMonitoringEnabled(t *testing.T) {
+	cfg := newReconcilerTestConfig()
+
+	t.Run("true when UserWorkloadMonitoring MetricsIntegration references Istio", func(t *testing.T) {
+		g := NewWithT(t)
+		istio := testIstioWithoutMonitoring()
+		cl := newFakeClientBuilder().WithObjects(
+			istio,
+			newUserWorkloadMetricsIntegration("uwm", istioName),
+		).Build()
+		r := NewReconciler(cfg, cl, scheme.Scheme)
+		enabled, err := r.isMonitoringEnabled(ctx, istio)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(enabled).To(BeTrue())
+	})
+
+	t.Run("false when MetricsIntegration references a different Istio", func(t *testing.T) {
+		g := NewWithT(t)
+		istio := testIstioWithoutMonitoring()
+		cl := newFakeClientBuilder().WithObjects(
+			istio,
+			newUserWorkloadMetricsIntegration("uwm", "other-istio"),
+		).Build()
+		r := NewReconciler(cfg, cl, scheme.Scheme)
+		enabled, err := r.isMonitoringEnabled(ctx, istio)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(enabled).To(BeFalse())
+	})
 }
 
 func TestNamespacesForRevision(t *testing.T) {
