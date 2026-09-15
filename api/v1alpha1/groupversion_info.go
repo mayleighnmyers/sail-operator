@@ -38,6 +38,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(GroupVersion,
 		&ZTunnel{},
 		&ZTunnelList{},
+		&MetricsIntegration{},
+		&MetricsIntegrationList{},
 	)
 	metav1.AddToGroupVersion(scheme, GroupVersion)
 	return nil

@@ -1,0 +1,9 @@
+category: added
+title: Add MetricsIntegration CRD for Istio metrics backends
+description: |
+  Introduces a cluster-scoped MetricsIntegration API (sailoperator.io/v1alpha1)
+  so metrics collection can be enabled by referencing an Istio resource instead
+  of annotating the Istio CR. UserWorkloadMonitoring creates ServiceMonitor
+  and PodMonitor resources; ClusterObservabilityOperator is reserved in the
+  API for a follow-up. The sailoperator.io/monitoring annotation remains
+  supported.
